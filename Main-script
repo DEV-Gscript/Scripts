@@ -44,7 +44,7 @@ local Config = {
 
     -- [7] Hub Information & UI Text
     HubName         = "DEV_G", -- The main title shown at the top of the GUI
-    HubDescription  = "Welcome" -- The text shown below the title
+    HubDescription  = "Get a Key and Enjoy!!" -- The text shown below the title
 }
 
 -------------------------------------------------------------------------------
