@@ -1,0 +1,798 @@
+--[[
+    ================================================================
+    [ SCRIPT INFORMATION ]
+    Project: Custom Script
+    Author: OYB
+    YouTube: https://www.youtube.com/channel/UCAlXXV1Hbvf7WbfXARuVtiQ
+    
+    [ TERMS AND CONDITIONS ]
+    - You ARE allowed to use and modify this script for your own games.
+    - You ARE NOT allowed to re-upload, redistribute, or claim 
+      ownership of this script.
+    - Removing or altering these credits is strictly prohibited.
+    
+    Copyright (c) 2026 OYB. All rights reserved.
+    ================================================================
+]]
+
+-- ⚠️ IMPORTANT: Put this code at the VERY TOP of your Main Script (before obfuscating) ⚠️
+
+local ProtectionConfig = {
+    -- 🔴 CRITICAL: This MUST exactly match the 'Secret' value in your Key System's Config!
+    -- If your Key System has: Secret = "Test"
+    -- Then this must also be: SecretKey = "Test"
+    SecretKey = "9841",
+    
+    -- The name of your Hub (shown in the kick message if they try to bypass)
+    HubName = "DEV_G"
+}
+
+-- Anti-Bypass Logic: Checks if the Key System successfully set the global variable
+if not _G[ProtectionConfig.SecretKey] then
+    local player = game:GetService("Players").LocalPlayer
+    if player then
+        player:Kick("\n🛡️ Unauthorized Execution 🛡️\n\nPlease use the official Key System to run " .. ProtectionConfig.HubName)
+    end
+    return -- Stops the rest of the script from loading!
+end
+
+-------------------------------------------------------------------------------
+-- 👇 YOUR MAIN SCRIPT CODE STARTS HERE 👇
+-------------------------------------------------------------------------------
+
+print(ProtectionConfig.HubName .. " Loaded Successfully!")
+
+local Players = game:GetService("Players")
+local RS = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local lp = Players.LocalPlayer
+local Packets = require(RS:WaitForChild("Packages"):WaitForChild("Packets"))
+
+-- Destroy old instance if running
+if _G.NEO_HUD_DESTROY then
+    pcall(_G.NEO_HUD_DESTROY)
+end
+
+local driveOn, noclipOn, rollOn, autoBuyOn = false, false, false, false
+local customSpeed = 100
+local serverTop, lastDbg, lastRespawnTry = nil, 0, 0
+local rollN, buyN = 0, 0
+local straightDir = nil
+local connections = {}
+
+-- Rarity system for AUTO-BUY
+local rarityNames = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Mythical", "Exotic", "Secret", "Divine"}
+local rarityOrder = {}
+for i, name in ipairs(rarityNames) do rarityOrder[string.lower(name)] = i end
+local minRarityIdx = 3 -- default: Rare+
+
+local function getCar()
+    local cars = workspace:FindFirstChild("Cars")
+    if not cars then return nil end
+    for _, c in ipairs(cars:GetChildren()) do
+        if c:IsA("Model") and c:GetAttribute("OwnerUserId") == lp.UserId then return c end
+    end
+    return nil
+end
+
+local function myPlot()
+    local g = workspace:FindFirstChild("Game")
+    local plots = g and g:FindFirstChild("Lobby") and g.Lobby:FindFirstChild("Plots")
+    if not plots then return nil end
+    for _, p in ipairs(plots:GetChildren()) do
+        if p:IsA("Model") then
+            local ownerId = p:GetAttribute("OwnerUserId") or p:GetAttribute("Owner") or p:GetAttribute("UserId")
+            if ownerId == lp.UserId or tostring(ownerId) == tostring(lp.UserId) then 
+                return p 
+            end
+        end
+    end
+    -- Fallback: return plot containing Rolls folder
+    for _, p in ipairs(plots:GetChildren()) do
+        if p:IsA("Model") and p:FindFirstChild("Rolls") then
+            return p
+        end
+    end
+    return nil
+end
+
+-- Detect rarity of item in Roll stand by checking Roll.Info.Rarity and ItemPlace item models
+local function detectRarityInItemPlace()
+    local plot = myPlot()
+    if not plot then return nil, nil end
+    local rolls = plot:FindFirstChild("Rolls")
+    if not rolls then return nil, nil end
+    
+    for _, rollFolder in ipairs({"RollWeapons", "RollBlocks"}) do
+        local rf = rolls:FindFirstChild(rollFolder)
+        if rf then
+            -- 1. Check Info.Rarity text label
+            local info = rf:FindFirstChild("Info") or (rf:FindFirstChild("Roll") and rf.Roll:FindFirstChild("Info"))
+            local rarityLabel = info and info:FindFirstChild("Rarity")
+            if rarityLabel and rarityLabel:IsA("TextLabel") and rarityLabel.Text ~= "" and rarityLabel.Text ~= "???" then
+                local txt = string.lower(rarityLabel.Text)
+                for i, rName in ipairs(rarityNames) do
+                    if string.find(txt, string.lower(rName)) then
+                        return i, rName
+                    end
+                end
+            end
+
+            -- 2. Check ItemPlace item models and GUI/Attributes inside ItemPlace
+            local ip = rf:FindFirstChild("ItemPlace")
+            if ip then
+                for _, child in ipairs(ip:GetChildren()) do
+                    -- Check attributes on spawned item model
+                    local itemRarity = child:GetAttribute("Rarity") or child:GetAttribute("ItemRarity")
+                    if itemRarity then
+                        local txt = string.lower(tostring(itemRarity))
+                        for i, rName in ipairs(rarityNames) do
+                            if string.find(txt, string.lower(rName)) then
+                                return i, rName
+                            end
+                        end
+                    end
+                    -- Check all descendant TextLabels inside ItemPlace
+                    for _, desc in ipairs(child:GetDescendants()) do
+                        if desc:IsA("TextLabel") and desc.Text ~= "" and desc.Text ~= "???" then
+                            local txt = string.lower(desc.Text)
+                            for i, rName in ipairs(rarityNames) do
+                                if string.find(txt, string.lower(rName)) then
+                                    return i, rName
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            -- 3. Fallback scan of all descendants inside roll stand
+            for _, desc in ipairs(rf:GetDescendants()) do
+                if desc:IsA("TextLabel") and desc.Text ~= "" and desc.Text ~= "???" and desc.Name ~= "Chance" and desc.Name ~= "Price" and desc.Name ~= "Count" then
+                    local txt = string.lower(desc.Text)
+                    for i, rName in ipairs(rarityNames) do
+                        if string.find(txt, string.lower(rName)) then
+                            return i, rName
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return nil, nil
+end
+
+-- ================= GUI PRINCIPAL =================
+local gui = Instance.new("ScreenGui")
+gui.Name = "NEO_HUD"
+gui.ResetOnSpawn = false
+local hui = (gethui and gethui()) or lp:FindFirstChildOfClass("PlayerGui") or lp:WaitForChild("PlayerGui")
+gui.Parent = hui
+
+-- Contenedor de Alertas Personalizadas (Esquina superior derecha)
+local notifyContainer = Instance.new("Frame")
+notifyContainer.Name = "NotifyContainer"
+notifyContainer.Size = UDim2.new(0, 240, 1, -20)
+notifyContainer.Position = UDim2.new(1, -250, 0, 10)
+notifyContainer.BackgroundTransparency = 1
+notifyContainer.Parent = gui
+
+local notifyLayout = Instance.new("UIListLayout")
+notifyLayout.SortOrder = Enum.SortOrder.LayoutOrder
+notifyLayout.Padding = UDim.new(0, 8)
+notifyLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+notifyLayout.Parent = notifyContainer
+
+-- Función para Alerta Personalizada con Animación y Barra de Carga
+local function customAlert(text, isWarning)
+    task.spawn(function()
+        if not gui or not gui.Parent then return end
+        local card = Instance.new("Frame")
+        card.Size = UDim2.new(1, 0, 0, 42)
+        card.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+        card.BackgroundTransparency = 1
+        card.BorderSizePixel = 0
+        card.ClipsDescendants = true
+        card.Parent = notifyContainer
+
+        Instance.new("UICorner", card).CornerRadius = UDim.new(0, 6)
+
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = isWarning and Color3.fromRGB(255, 170, 0) or Color3.fromRGB(255, 255, 255)
+        stroke.Transparency = 1
+        stroke.Thickness = 1
+        stroke.Parent = card
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, -12, 1, -6)
+        label.Position = UDim2.new(0, 6, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = text
+        label.TextColor3 = isWarning and Color3.fromRGB(255, 200, 100) or Color3.fromRGB(240, 240, 240)
+        label.TextTransparency = 1
+        label.Font = Enum.Font.GothamMedium
+        label.TextSize = 10
+        label.TextWrapped = true
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = card
+
+        -- Barra de Carga
+        local progressBar = Instance.new("Frame")
+        progressBar.Size = UDim2.new(1, 0, 0, 2)
+        progressBar.Position = UDim2.new(0, 0, 1, -2)
+        progressBar.BackgroundColor3 = isWarning and Color3.fromRGB(255, 170, 0) or Color3.fromRGB(0, 225, 255)
+        progressBar.BackgroundTransparency = 1
+        progressBar.BorderSizePixel = 0
+        progressBar.Parent = card
+
+        -- Animación de Entrada
+        local tweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+        TweenService:Create(card, tweenInfo, {BackgroundTransparency = 0.15}):Play()
+        TweenService:Create(stroke, tweenInfo, {Transparency = 0.8}):Play()
+        TweenService:Create(label, tweenInfo, {TextTransparency = 0}):Play()
+        TweenService:Create(progressBar, tweenInfo, {BackgroundTransparency = 1}):Play()
+
+        -- Animación de Barra de Carga
+        local loadTime = 3.5
+        TweenService:Create(progressBar, TweenInfo.new(loadTime, Enum.EasingStyle.Linear), {Size = UDim2.new(0, 0, 0, 2)}):Play()
+
+        task.wait(loadTime)
+
+        -- Animación de Salida
+        local exitTween = TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+        TweenService:Create(card, exitTween, {BackgroundTransparency = 1}):Play()
+        TweenService:Create(stroke, exitTween, {Transparency = 1}):Play()
+        TweenService:Create(label, exitTween, {TextTransparency = 1}):Play()
+        TweenService:Create(progressBar, exitTween, {BackgroundTransparency = 1}):Play()
+
+        task.wait(0.3)
+        card:Destroy()
+    end)
+end
+
+-- ================= INTERFAZ =================
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0, 180, 0, 370)
+main.Position = UDim2.new(0, 10, 0.5, -160)
+main.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+main.BorderSizePixel = 0
+main.Active = true
+main.Draggable = true
+main.Parent = gui
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 8)
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -30, 0, 28)
+title.Position = UDim2.new(0, 10, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "NEO HUD"
+title.TextColor3 = Color3.fromRGB(0, 225, 255)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 14
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = main
+
+-- Close [X] Button on Header
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 20, 0, 20)
+closeBtn.Position = UDim2.new(1, -25, 0, 4)
+closeBtn.BackgroundColor3 = Color3.fromRGB(50, 25, 30)
+closeBtn.TextColor3 = Color3.fromRGB(255, 80, 80)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 12
+closeBtn.Text = "X"
+closeBtn.Parent = main
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 4)
+
+local status = Instance.new("TextLabel")
+status.Size = UDim2.new(1, -10, 0, 36)
+status.Position = UDim2.new(0, 5, 0, 24)
+status.BackgroundTransparency = 1
+status.TextColor3 = Color3.fromRGB(180, 180, 180)
+status.Font = Enum.Font.Gotham
+status.TextSize = 10
+status.TextWrapped = true
+status.Text = "loading..."
+status.Parent = main
+
+-- Selector de Velocidad Presets (100 - 200 - 300) + Custom Input
+local speedContainer = Instance.new("Frame")
+speedContainer.Name = "SpeedSelector"
+speedContainer.Size = UDim2.new(1, -16, 0, 52)
+speedContainer.Position = UDim2.new(0, 8, 0, 98)
+speedContainer.BackgroundTransparency = 1
+speedContainer.Visible = false
+speedContainer.Parent = main
+
+local presetFrame = Instance.new("Frame")
+presetFrame.Size = UDim2.new(1, 0, 0, 24)
+presetFrame.Position = UDim2.new(0, 0, 0, 0)
+presetFrame.BackgroundTransparency = 1
+presetFrame.Parent = speedContainer
+
+local presetLayout = Instance.new("UIListLayout")
+presetLayout.FillDirection = Enum.FillDirection.Horizontal
+presetLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+presetLayout.Padding = UDim.new(0, 4)
+presetLayout.Parent = presetFrame
+
+local speedButtons = {}
+local speeds = {100, 200, 300}
+
+local speedBox = Instance.new("TextBox")
+speedBox.Size = UDim2.new(1, 0, 0, 22)
+speedBox.Position = UDim2.new(0, 0, 0, 28)
+speedBox.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
+speedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+speedBox.PlaceholderText = "Custom speed..."
+speedBox.Text = tostring(customSpeed)
+speedBox.Font = Enum.Font.GothamBold
+speedBox.TextSize = 11
+speedBox.Parent = speedContainer
+Instance.new("UICorner", speedBox).CornerRadius = UDim.new(0, 4)
+
+local function updateSpeedSelector(selectedSpeed)
+    customSpeed = selectedSpeed
+    speedBox.Text = tostring(selectedSpeed)
+    for sVal, btn in pairs(speedButtons) do
+        local isActive = (sVal == selectedSpeed)
+        btn.BackgroundColor3 = isActive and Color3.fromRGB(0, 180, 220) or Color3.fromRGB(28, 28, 38)
+        btn.TextColor3 = isActive and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(160, 160, 170)
+    end
+end
+
+for _, sp in ipairs(speeds) do
+    local sBtn = Instance.new("TextButton")
+    sBtn.Size = UDim2.new(0, 50, 1, 0)
+    sBtn.BackgroundColor3 = (sp == customSpeed) and Color3.fromRGB(0, 180, 220) or Color3.fromRGB(28, 28, 38)
+    sBtn.TextColor3 = (sp == customSpeed) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(160, 160, 170)
+    sBtn.Font = Enum.Font.GothamBold
+    sBtn.TextSize = 11
+    sBtn.Text = tostring(sp)
+    sBtn.Parent = presetFrame
+    Instance.new("UICorner", sBtn).CornerRadius = UDim.new(0, 4)
+
+    speedButtons[sp] = sBtn
+    sBtn.MouseButton1Click:Connect(function()
+        updateSpeedSelector(sp)
+        customAlert("Speed set to " .. tostring(sp), false)
+    end)
+end
+
+speedBox:GetPropertyChangedSignal("Text"):Connect(function()
+    local val = tonumber(speedBox.Text)
+    if val then
+        customSpeed = math.clamp(val, 10, 1000)
+        for sVal, btn in pairs(speedButtons) do
+            local isActive = (sVal == customSpeed)
+            btn.BackgroundColor3 = isActive and Color3.fromRGB(0, 180, 220) or Color3.fromRGB(28, 28, 38)
+            btn.TextColor3 = isActive and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(160, 160, 170)
+        end
+    end
+end)
+
+local btns = {}
+local function makeBtn(name, key, y, customColor, customTextColor)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1, -16, 0, 26)
+    b.Position = UDim2.new(0, 8, 0, y)
+    b.BackgroundColor3 = customColor or Color3.fromRGB(35, 35, 45)
+    b.TextColor3 = customTextColor or Color3.fromRGB(160, 160, 170)
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 12
+    b.Text = key and (key .. ": " .. name .. " [OFF]") or name
+    b.Parent = main
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+    
+    if key then
+        btns[key] = {btn = b, name = name, state = false}
+        b.MouseButton1Click:Connect(function()
+            local st = btns[key]
+            st.state = not st.state
+            b.Text = key .. ": " .. name .. (st.state and " [ON]" or " [OFF]")
+            
+            b.TextColor3 = st.state and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(160, 160, 170)
+            b.BackgroundColor3 = st.state and Color3.fromRGB(45, 45, 60) or Color3.fromRGB(35, 35, 45)
+            
+            customAlert('Option "' .. name .. '" ' .. (st.state and "activated" or "deactivated"), false)
+            
+            if key == "T" then 
+                driveOn = st.state 
+                speedContainer.Visible = st.state 
+                if not driveOn then
+                    straightDir = nil
+                end
+            end
+            if key == "Y" then noclipOn = st.state end
+            if key == "R" then rollOn = st.state end
+            if key == "B" then autoBuyOn = st.state end
+        end)
+    end
+    return b
+end
+
+-- Botones (desplazados para dar espacio al selector custom)
+makeBtn("AUTO-DRIVE", "T", 68)
+makeBtn("NOCLIP", "Y", 156)
+makeBtn("ROLL FARM", "R", 192)
+makeBtn("AUTO-BUY", "B", 228)
+
+-- Rarity Selector (cycles through rarities on click)
+local rarityBtn = Instance.new("TextButton")
+rarityBtn.Size = UDim2.new(1, -16, 0, 22)
+rarityBtn.Position = UDim2.new(0, 8, 0, 258)
+rarityBtn.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
+rarityBtn.TextColor3 = Color3.fromRGB(0, 225, 255)
+rarityBtn.Font = Enum.Font.GothamBold
+rarityBtn.TextSize = 10
+rarityBtn.Text = "MIN RARITY: " .. rarityNames[minRarityIdx] .. "+"
+rarityBtn.Parent = main
+Instance.new("UICorner", rarityBtn).CornerRadius = UDim.new(0, 4)
+
+rarityBtn.MouseButton1Click:Connect(function()
+    minRarityIdx = (minRarityIdx % #rarityNames) + 1
+    rarityBtn.Text = "MIN RARITY: " .. rarityNames[minRarityIdx] .. "+"
+    customAlert("Min rarity set to: " .. rarityNames[minRarityIdx] .. "+", false)
+end)
+
+local wlContainer = Instance.new("Frame")
+wlContainer.Size = UDim2.new(1, -16, 0, 22)
+wlContainer.Position = UDim2.new(0, 8, 0, 284)
+wlContainer.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
+wlContainer.Parent = main
+Instance.new("UICorner", wlContainer).CornerRadius = UDim.new(0, 4)
+
+local wlBox = Instance.new("TextBox")
+wlBox.Size = UDim2.new(1, -10, 1, 0)
+wlBox.Position = UDim2.new(0, 5, 0, 0)
+wlBox.BackgroundTransparency = 1
+wlBox.TextColor3 = Color3.fromRGB(0, 225, 255)
+wlBox.Font = Enum.Font.Gotham
+wlBox.TextSize = 10
+wlBox.PlaceholderText = "Whitelist (e.g. Red-V3, Fuel)"
+wlBox.Text = ""
+wlBox.Parent = wlContainer
+
+local useWhitelist = false
+local wlToggle = Instance.new("TextButton")
+wlToggle.Size = UDim2.new(1, -16, 0, 22)
+wlToggle.Position = UDim2.new(0, 8, 0, 310)
+wlToggle.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
+wlToggle.TextColor3 = Color3.fromRGB(160, 160, 170)
+wlToggle.Font = Enum.Font.GothamBold
+wlToggle.TextSize = 10
+wlToggle.Text = "USE WHITELIST: OFF"
+wlToggle.Parent = main
+Instance.new("UICorner", wlToggle).CornerRadius = UDim.new(0, 4)
+
+wlToggle.MouseButton1Click:Connect(function()
+    useWhitelist = not useWhitelist
+    wlToggle.Text = "USE WHITELIST: " .. (useWhitelist and "ON" or "OFF")
+    wlToggle.TextColor3 = useWhitelist and Color3.fromRGB(0, 225, 255) or Color3.fromRGB(160, 160, 170)
+    customAlert("Whitelist: " .. (useWhitelist and "ON" or "OFF"), false)
+end)
+
+-- Botón UNLOAD / DESTROY SCRIPT
+local destroyBtn = makeBtn("UNLOAD SCRIPT", nil, 336, Color3.fromRGB(70, 25, 30), Color3.fromRGB(255, 100, 100))
+
+-- ================= SCRIPT DESTROY / UNLOAD FUNCTION =================
+local function destroyScript()
+    -- Reset all states
+    driveOn, noclipOn, rollOn, autoBuyOn = false, false, false, false
+    straightDir = nil
+    
+    -- Disconnect all active events
+    for _, conn in ipairs(connections) do
+        if conn and conn.Connected then
+            pcall(function() conn:Disconnect() end)
+        end
+    end
+    table.clear(connections)
+    
+    -- Destroy GUI
+    if gui then
+        pcall(function() gui:Destroy() end)
+    end
+    
+    _G.NEO_HUD_DESTROY = nil
+    print("[NEO HUD] Script completely unloaded and destroyed.")
+end
+
+_G.NEO_HUD_DESTROY = destroyScript
+closeBtn.MouseButton1Click:Connect(destroyScript)
+destroyBtn.MouseButton1Click:Connect(destroyScript)
+
+-- Keybinds
+table.insert(connections, UserInputService.InputBegan:Connect(function(i, g)
+    if g then return end
+    local k = btns[i.KeyCode.Name]
+    if k then k.btn.MouseButton1Click:Fire() end
+end))
+
+-- ================= ENGINE (AUTO-BUY) =================
+-- Simple polling approach: watch roll stands for the actual dropped item ProximityPrompt
+
+local lastBuyStandState = {} -- Track what we've already processed
+
+task.spawn(function()
+    while gui and gui.Parent do
+        task.wait(0.3)
+        if not autoBuyOn then
+            lastBuyStandState = {}
+        else
+            local plot = myPlot()
+            local rolls = plot and plot:FindFirstChild("Rolls")
+            if rolls then
+                for _, standName in ipairs({"RollWeapons", "RollBlocks"}) do
+                    local stand = rolls:FindFirstChild(standName)
+                    if stand then
+                        -- The item drops physically and has a "BuyPrompt" somewhere inside ItemPlace
+                        -- Example Path: ItemPlace.Attachment.BuyPrompt
+                        local buyPrompt = nil
+                        
+                        -- Find any ProximityPrompt in the stand that has "Buy" or "Purchase"
+                        for _, desc in ipairs(stand:GetDescendants()) do
+                            if desc:IsA("ProximityPrompt") then
+                                local action = string.lower(desc.ActionText or "")
+                                local name = string.lower(desc.Name)
+                                if string.find(action, "buy") or string.find(name, "buy") or string.find(action, "purchase") then
+                                    buyPrompt = desc
+                                    break
+                                end
+                            end
+                        end
+                        
+                        if buyPrompt then
+                            local itemName = buyPrompt.ObjectText or ""
+                            
+                            -- When an item is actively rolled, ObjectText changes from "???" to the item name
+                            if itemName ~= "" and itemName ~= "???" then
+                                
+                                -- Prevent processing the exact same roll instance repeatedly
+                                -- We track it by the actual ProximityPrompt instance + item name
+                                local stateKey = tostring(buyPrompt:GetDebugId(10)) .. "_" .. itemName
+                                
+                                if lastBuyStandState[standName] ~= stateKey then
+                                    lastBuyStandState[standName] = stateKey
+                                    
+                                    -- Detect rarity
+                                    local rIdx, rName = nil, nil
+                                    
+                                    -- Scan all TextLabels in the stand for a rarity keyword
+                                    pcall(function()
+                                        for _, desc in ipairs(stand:GetDescendants()) do
+                                            if desc:IsA("TextLabel") and desc.Text ~= "" and desc.Text ~= "???" 
+                                               and desc.Name ~= "Chance" and desc.Name ~= "Price" and desc.Name ~= "Count" then
+                                                local txt = string.lower(desc.Text)
+                                                for i, rn in ipairs(rarityNames) do
+                                                    if string.find(txt, string.lower(rn)) then
+                                                        rIdx, rName = i, rn
+                                                        break
+                                                    end
+                                                end
+                                                if rIdx then break end
+                                            end
+                                        end
+                                    end)
+                                    
+                                    -- Fallback to UI scan
+                                    if not rIdx then
+                                        rIdx, rName = detectRarityInItemPlace()
+                                    end
+                                    
+                                    print(string.format("[NEO AUTO-BUY] Item dropped in %s | Name: %s | Rarity: %s (%s) | Min: %s",
+                                        standName, itemName, tostring(rIdx), tostring(rName), rarityNames[minRarityIdx]))
+                                    
+                                    local meetsWhitelist = false
+                                    if useWhitelist then
+                                        local wlText = string.lower(wlBox.Text)
+                                        for part in string.gmatch(wlText, "[^,]+") do
+                                            part = string.match(part, "^%s*(.-)%s*$") -- trim
+                                            if part ~= "" and string.find(string.lower(itemName), part) then
+                                                meetsWhitelist = true
+                                                break
+                                            end
+                                        end
+                                    end
+                                    
+                                    if (useWhitelist and meetsWhitelist) or (not useWhitelist and rIdx and rIdx >= minRarityIdx) then
+                                        -- BUY IT
+                                        _G.rollPauseUntil = tick() + 3.0 -- Pause auto-roll for 3 seconds
+                                        
+                                        pcall(function()
+                                            buyPrompt.MaxActivationDistance = math.huge
+                                            buyPrompt.RequiresLineOfSight = false
+                                            buyPrompt.Enabled = true
+                                            
+                                            -- Teleport to the item temporarily to bypass server distance checks
+                                            local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+                                            local promptPart = buyPrompt.Parent
+                                            local oldCFrame = hrp and hrp.CFrame
+                                            
+                                            if hrp and promptPart and promptPart:IsA("Attachment") then
+                                                hrp.CFrame = promptPart.WorldCFrame
+                                                task.wait(0.1) -- give server time to register position
+                                            end
+                                            
+                                            if fireproximityprompt then
+                                                fireproximityprompt(buyPrompt)
+                                            else
+                                                buyPrompt:InputHoldBegin()
+                                                task.wait(0.15)
+                                                buyPrompt:InputHoldEnd()
+                                            end
+                                            
+                                            -- Teleport back
+                                            if hrp and oldCFrame then
+                                                task.wait(0.2)
+                                                hrp.CFrame = oldCFrame
+                                            end
+                                        end)
+                                        buyN = buyN + 1
+                                        customAlert("AUTO-BUY: Bought " .. itemName .. " (" .. (rName or "?") .. ")!", false)
+                                    else
+                                        -- SKIP IT (Do nothing, let the ROLL loop pull the lever again)
+                                        customAlert("AUTO-BUY: Skipped " .. itemName .. " (" .. (rName or "?") .. ")", true)
+                                    end
+                                end
+                            else
+                                -- If item is ???, the stand is idle, clear the state so next roll can trigger
+                                if lastBuyStandState[standName] then
+                                    lastBuyStandState[standName] = nil
+                                end
+                            end
+                        else
+                            -- No prompt at all = idle
+                            if lastBuyStandState[standName] then
+                                lastBuyStandState[standName] = nil
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+local function applyNoclip()
+    local car = getCar()
+    if car then for _, p in ipairs(car:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end end
+    local ch = lp.Character
+    if ch then for _, p in ipairs(ch:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end end
+end
+
+-- Lógica Silenciosa para Ignorar Zombis (Siempre Activa)
+local function applyIgnoreZombies()
+    local folder = workspace:FindFirstChild("Zombies") or workspace:FindFirstChild("Enemies") or workspace:FindFirstChild("NPCs")
+    if folder then
+        for _, z in ipairs(folder:GetChildren()) do
+            for _, p in ipairs(z:GetDescendants()) do
+                if p:IsA("BasePart") then
+                    p.CanCollide = false
+                    p.CanTouch = false
+                end
+            end
+        end
+    end
+end
+
+task.spawn(function()
+    while gui and gui.Parent do
+        task.wait(0.5)
+        if driveOn and not getCar() and tick() - lastRespawnTry > 12 then
+            lastRespawnTry = tick()
+            pcall(function() Packets.SpawnCar:Fire() end)
+        end
+    end
+end)
+
+task.spawn(function()
+    while gui and gui.Parent do
+        task.wait(0.3)
+        if driveOn then
+            pcall(function() Packets.SetTurbo:Fire(true) end)
+            local car = getCar()
+            if car then car:SetAttribute("NitroFuel", 1) end
+        end
+    end
+end)
+
+-- ROLL FARM — fires from any distance by overriding prompt range
+task.spawn(function()
+    while gui and gui.Parent do
+        task.wait(1.5)
+        local pauseUntil = _G.rollPauseUntil or 0
+        if rollOn and tick() > pauseUntil then
+            local plot = myPlot()
+            local rolls = plot and plot:FindFirstChild("Rolls")
+            if rolls then
+                for _, sn in ipairs({"RollBlocks", "RollWeapons"}) do
+                    local st = rolls:FindFirstChild(sn)
+                    local rp = st and st:FindFirstChild("Roll")
+                    local pr = rp and rp:FindFirstChild("ProximityPrompt")
+                    if pr then
+                        pcall(function()
+                            -- bypass distance and line-of-sight checks
+                            pr.MaxActivationDistance = math.huge
+                            pr.RequiresLineOfSight = false
+                            pr.Enabled = true
+
+                            if fireproximityprompt then
+                                fireproximityprompt(pr)
+                            else
+                                pr:InputHoldBegin()
+                                task.wait(0.1)
+                                pr:InputHoldEnd()
+                            end
+                        end)
+                        rollN = rollN + 1
+                    end
+                end
+            end
+        end
+    end
+end)
+
+
+
+table.insert(connections, RunService.PostSimulation:Connect(function()
+    applyIgnoreZombies()
+    if noclipOn then applyNoclip() end
+    if not driveOn then 
+        straightDir = nil
+        return 
+    end
+
+    local car = getCar()
+    if not car or not car.PrimaryPart then 
+        straightDir = nil
+        return 
+    end
+    local pp = car.PrimaryPart
+    local pos = pp.Position
+    local vel = pp.AssemblyLinearVelocity
+    local speed = Vector3.new(vel.X, 0, vel.Z).Magnitude
+    local SPEED = customSpeed
+    local now = tick()
+
+    if not serverTop then
+        local t = car:GetAttribute("TopSpeed")
+        if type(t) == "number" and t > 0 then serverTop = t end
+    end
+
+    -- Lock direction when AUTO-DRIVE starts
+    if not straightDir then
+        local look = pp.CFrame.LookVector
+        local hLook = Vector3.new(look.X, 0, look.Z)
+        straightDir = hLook.Magnitude > 0.01 and hLook.Unit or Vector3.new(0, 0, -1)
+    end
+
+    -- Force zero angular velocity and lock orientation straight ahead to prevent drift/turning
+    pp.AssemblyAngularVelocity = Vector3.zero
+    pp.CFrame = CFrame.lookAt(pos, pos + straightDir)
+
+    local rp = RaycastParams.new()
+    rp.FilterType = Enum.RaycastFilterType.Exclude
+    rp.FilterDescendantsInstances = {car, lp.Character}
+
+    -- Determine target velocities along fixed straight direction
+    local targetVelX = straightDir.X * SPEED
+    local targetVelZ = straightDir.Z * SPEED
+
+    -- Vertical / Ground height adjustment
+    local gRay = workspace:Raycast(pos + Vector3.new(0, 30, 0), Vector3.new(0, -80, 0), rp)
+    local targetY = gRay and (gRay.Position.Y + 4) or pos.Y
+    local yVel = math.clamp((targetY - pos.Y) * 3, -40, 30)
+
+    -- Apply fixed linear velocity
+    pp.AssemblyLinearVelocity = Vector3.new(targetVelX, yVel, targetVelZ)
+
+    if now - lastDbg > 3 then
+        lastDbg = now
+        local cv = lp:FindFirstChild("CashValue")
+        status.Text = string.format("cash: %s | DRIVE\nrolls: %d | buys: %d | vel: %d",
+            cv and tostring(cv.Value) or "?", rollN, buyN, math.floor(speed))
+    end
+end))
