@@ -1,15 +1,15 @@
 local Config = {
     -- [1] PlatoBoost Settings
-    ServiceId       = 33470, -- Your PlatoBoost Service ID
-    PlatoSecret     = "527e39a9-de92-4ed8-87ff-82c5d0b4512f", -- Your PlatoBoost Secret Key
+    ServiceId       = 33470,
+    PlatoSecret     = "527e39a9-de92-4ed8-87ff-82c5d0b4512f",
 
     -- [2] Anti-Bypass / Global Secret Variable
-    Secret          = "9841", -- This makes the script ONLY run from the key script. Even if they copy the original obfuscated script to bypass the key, they won't be able to!
+    Secret          = "9841",
     
     -- [3] Scripts & Links
-    MainScriptURL   = "https://raw.githubusercontent.com/DEV-Gscript/scripts-load-/refs/heads/main/B%26KZombies", -- The raw URL of your main script
+    MainScriptURL   = "https://raw.githubusercontent.com/DEV-Gscript/Scripts/refs/heads/main/Build-And-Kill-Zombies",
     
-    -- [4] Social Media Settings (Set to true to show, false to hide)
+    -- [4] Social Media Settings
     ShowDiscord     = true,
     DiscordURL      = "https://discord.gg/RF7AffpSSV",
     
@@ -20,15 +20,23 @@ local Config = {
     YoutubeURL      = "https://www.youtube.com/channel/UCAlXXV1Hbvf7WbfXARuVtiQ",
 
     -- [5] File System
-    KeyFileName     = "Mykey.txt", -- The name of the file where the valid key will be saved for auto-login
+    KeyFileName     = "Mykey.txt",
 
     -- [6] GUI Management
-    OldGuiName      = "DEV_G Premium", -- Name of the old GUI to destroy if it's already open
-    MainGuiName     = "DEV_G Premium", -- Name of the main script's GUI to check if it's already executing
+    OldGuiName      = "DEV_G Free +",
+    MainGuiName     = "DEV_G Free +",
 
     -- [7] Hub Information & UI Text
-    HubName         = "DEV_G Premium", -- The main title shown at the top of the GUI
-    HubDescription  = "Stronger Security & More Frequent Updates" -- The text shown below the title
+    HubName         = "DEV_G Free +",
+    HubDescription  = "Stronger Security & More Frequent Updates",
+
+    -- [8] ADMIN KEYS (Bypass PlatoBoost verification entirely)
+    -- These keys work offline and grant instant access.
+    AdminKeys = {
+        "DEV_G-OWNER-MASTER-KEY0",
+        "DEV_G-OWNER-MASTER-KEY1",
+        -- Add more admin keys here if needed
+    }
 }
 
 -------------------------------------------------------------------------------
@@ -38,19 +46,67 @@ local a=2^32;local b=a-1;local function c(d,e)local f,g=0,1;while d~=0 or e~=0 d
 local lEncode, lDecode, lDigest = a3, aw, Z;
 
 -------------------------------------------------------------------------------
+--! ROBUST FILE SYSTEM HELPERS
+-------------------------------------------------------------------------------
+local function saveKeyToFile(key)
+    if not writefile then 
+        warn("[KeySystem] writefile not supported by executor.")
+        return false, "writefile not supported" 
+    end
+    local ok, err = pcall(function()
+        writefile(Config.KeyFileName, tostring(key))
+    end)
+    if ok then
+        print("[KeySystem] Saved key to " .. tostring(Config.KeyFileName))
+        return true
+    else
+        warn("[KeySystem] Failed to save key: " .. tostring(err))
+        return false, tostring(err)
+    end
+end
+
+local function loadKeyFromFile()
+    if not isfile or not readfile then return nil end
+    local ok, exists = pcall(function() return isfile(Config.KeyFileName) end)
+    if not ok or not exists then return nil end
+    local ok2, content = pcall(function() return readfile(Config.KeyFileName) end)
+    if not ok2 or not content or content == "" then return nil end
+    return content
+end
+
+local function deleteKeyFile()
+    if not delfile then return end
+    pcall(function() 
+        if isfile and isfile(Config.KeyFileName) then
+            delfile(Config.KeyFileName) 
+        end
+    end)
+end
+
+-------------------------------------------------------------------------------
+--! ADMIN KEY CHECK
+-------------------------------------------------------------------------------
+local function isAdminKey(key)
+    if not key or key == "" then return false end
+    for _, adminKey in ipairs(Config.AdminKeys) do
+        if key == adminKey then return true end
+    end
+    return false
+end
+
+-------------------------------------------------------------------------------
 --! CORE FUNCTIONS (REQUESTS & VERIFICATION)
 -------------------------------------------------------------------------------
 
 local useNonce = true 
 
 local function safeRequest(options)
-    local req = request or http_request or syn_request or (http and http.request )
+    local req = request or http_request or syn_request or (http and http.request)
     if not req then return nil, "HTTP requests not supported" end
     local success, response = pcall(function() return req(options) end)
     if success and type(response) == "table" then 
         return response 
     else 
-       
         return nil, "Connection Error: " .. tostring(response or "Unknown") 
     end
 end
@@ -62,7 +118,7 @@ local fGetHwid = gethwid or function() return game:GetService("RbxAnalyticsServi
 local cachedLink, cachedTime = "", 0
 local host = "https://api.platoboost.com"
 
-local function checkConnectivity( )
+local function checkConnectivity()
     local response, err = safeRequest({Url = host .. "/public/connectivity", Method = "GET"})
     if not response or (response.StatusCode ~= 200 and response.StatusCode ~= 429) then
         host = "https://api.platoboost.net"
@@ -107,6 +163,14 @@ local function cacheLink()
 end
 
 local function redeemKey(key)
+    -- === ADMIN KEY BYPASS ===
+    if isAdminKey(key) then
+        print("[KeySystem] Admin key detected. Bypassing PlatoBoost.")
+        saveKeyToFile(key)
+        return true, "Success (Admin)"
+    end
+
+    -- === NORMAL PLATOBOOST FLOW ===
     local nonce = generateNonce()
     local body = {identifier = lDigest(fGetHwid()), key = key}
     if useNonce then body.nonce = nonce end
@@ -121,14 +185,14 @@ local function redeemKey(key)
     if response and response.StatusCode == 200 then
         local decoded = lDecode(response.Body)
         if decoded.success and decoded.data.valid then
+            -- Nonce integrity check
             if useNonce then
-                if decoded.data.hash == lDigest("true" .. "-" .. nonce .. "-" .. Config.PlatoSecret) then 
-                    if writefile then writefile(Config.KeyFileName, key) end
-                    return true, "Success" 
+                if decoded.data.hash ~= lDigest("true" .. "-" .. nonce .. "-" .. Config.PlatoSecret) then
+                    return false, "Integrity Check Failed"
                 end
-                return false, "Integrity Check Failed"
             end
-            if writefile then writefile(Config.KeyFileName, key) end
+            -- Save key to file for auto-login
+            saveKeyToFile(key)
             return true, "Success"
         end
         return false, decoded.message or "Invalid Key"
@@ -362,6 +426,7 @@ local function CreateGUI()
         local key = KeyInput.Text
         if key == "" then Status.Text = "Enter a key!"; return end
         Status.Text = "Verifying..."
+        Status.TextColor3 = Color3.fromRGB(200, 200, 200)
         local success, msg = redeemKey(key)
         if success then
             Status.Text = "Success! Loading..."
@@ -388,24 +453,30 @@ local function CreateGUI()
         end
     end)
 
-    if isfile and isfile(Config.KeyFileName) then
-        local savedKey = readfile(Config.KeyFileName)
-        if savedKey ~= "" then
-            Status.Text = "Found saved key, verifying..."
-            task.spawn(function()
-                local success, msg = redeemKey(savedKey)
-                if success then
-                    Status.Text = "Auto-login success!"
-                    Status.TextColor3 = Color3.fromRGB(0, 255, 100)
-                    task.wait(0.5)
-                    ScreenGui:Destroy()
-                    StartMainScript()
-                else
-                    Status.Text = "Saved key expired or invalid."
-                    Status.TextColor3 = Color3.fromRGB(255, 150, 0)
-                end
-            end)
-        end
+    -- === AUTO-LOGIN: Check for saved key ===
+    local savedKey = loadKeyFromFile()
+    if savedKey then
+        Status.Text = "Found saved key, verifying..."
+        Status.TextColor3 = Color3.fromRGB(0, 170, 255)
+        task.spawn(function()
+            task.wait(0.3) -- let GUI finish rendering
+            local success, msg = redeemKey(savedKey)
+            if success then
+                Status.Text = "Auto-login success!"
+                Status.TextColor3 = Color3.fromRGB(0, 255, 100)
+                task.wait(0.5)
+                ScreenGui:Destroy()
+                StartMainScript()
+            else
+                -- Delete invalid/expired key so user isn't stuck
+                deleteKeyFile()
+                Status.Text = "Saved key invalid. Enter a new one."
+                Status.TextColor3 = Color3.fromRGB(255, 150, 0)
+            end
+        end)
+    else
+        Status.Text = "No saved key found. Enter one."
+        Status.TextColor3 = Color3.fromRGB(150, 150, 150)
     end
 end
 
