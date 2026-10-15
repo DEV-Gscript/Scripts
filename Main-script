@@ -241,7 +241,7 @@ local function CreateGUI()
 
     local function stroke(parent, color, thickness, transparency)
         local s = Instance.new("UIStroke")
-        s.Color = color or Color3.fromRGB(55, 65, 85)
+        s.Color = color or Color3.fromRGB(42, 45, 58)
         s.Thickness = thickness or 1
         s.Transparency = transparency or 0
         s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -253,7 +253,7 @@ local function CreateGUI()
         local l = Instance.new("TextLabel")
         l.BackgroundTransparency = 1
         l.Text = text
-        l.TextColor3 = color or Color3.fromRGB(235, 240, 250)
+        l.TextColor3 = color or Color3.fromRGB(235, 238, 245)
         l.Font = font or Enum.Font.Gotham
         l.TextSize = size or 14
         l.TextXAlignment = Enum.TextXAlignment.Left
@@ -267,28 +267,28 @@ local function CreateGUI()
         b.Text = text
         b.Font = Enum.Font.GothamBold
         b.TextSize = 13
-        b.TextColor3 = Color3.fromRGB(240, 245, 255)
+        b.TextColor3 = Color3.fromRGB(235, 238, 245)
         b.BackgroundColor3 = bg
         b.BorderSizePixel = 0
         b.Parent = parent
         corner(b, 9)
-        stroke(b, Color3.fromRGB(70, 85, 110), 1, 0.25)
+        stroke(b, Color3.fromRGB(60, 65, 82), 1, 0.25)
         return b
     end
 
     local MainFrame = Instance.new("Frame")
     MainFrame.Size = UDim2.new(0, 410, 0, 455)
     MainFrame.Position = UDim2.new(0.5, -205, 0.5, -227)
-    MainFrame.BackgroundColor3 = Color3.fromRGB(10, 13, 19)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(18, 19, 24)
     MainFrame.BorderSizePixel = 0
     MainFrame.Active = true
     MainFrame.Parent = ScreenGui
     corner(MainFrame, 16)
-    stroke(MainFrame, Color3.fromRGB(45, 65, 95), 1.5, 0.05)
+    stroke(MainFrame, Color3.fromRGB(42, 45, 58), 1.5, 0.05)
 
     local top = Instance.new("Frame")
     top.Size = UDim2.new(1, 0, 0, 76)
-    top.BackgroundColor3 = Color3.fromRGB(14, 18, 27)
+    top.BackgroundColor3 = Color3.fromRGB(24, 25, 32)
     top.BorderSizePixel = 0
     top.Parent = MainFrame
     corner(top, 16)
@@ -296,15 +296,15 @@ local function CreateGUI()
     local accent = Instance.new("Frame")
     accent.Size = UDim2.new(1, 0, 0, 2)
     accent.Position = UDim2.new(0, 0, 1, -2)
-    accent.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+    accent.BackgroundColor3 = Color3.fromRGB(138, 43, 226)
     accent.BorderSizePixel = 0
     accent.Parent = top
 
-    local title = label(top, Config.HubName, 20, Color3.fromRGB(235, 242, 255), Enum.Font.GothamBold)
+    local title = label(top, Config.HubName, 20, Color3.fromRGB(235, 238, 245), Enum.Font.GothamBold)
     title.Position = UDim2.new(0, 22, 0, 14)
     title.Size = UDim2.new(1, -100, 0, 25)
 
-    local subtitle = label(top, Config.HubDescription, 11, Color3.fromRGB(130, 145, 170), Enum.Font.GothamMedium)
+    local subtitle = label(top, Config.HubDescription, 11, Color3.fromRGB(140, 145, 165), Enum.Font.GothamMedium)
     subtitle.Position = UDim2.new(0, 23, 0, 42)
     subtitle.Size = UDim2.new(1, -100, 0, 18)
 
@@ -320,7 +320,7 @@ local function CreateGUI()
     close.Size = UDim2.new(0, 30, 0, 30)
     close.Position = UDim2.new(1, -40, 0, 38)
     close.TextSize = 19
-    close.TextColor3 = Color3.fromRGB(160, 170, 190)
+    close.TextColor3 = Color3.fromRGB(140, 145, 165)
     close.MouseButton1Click:Connect(function() ScreenGui:Destroy() end)
 
     local dragging = false
@@ -350,16 +350,16 @@ local function CreateGUI()
 
     local info = Instance.new("Frame")
     info.Size = UDim2.new(1, 0, 0, 48)
-    info.BackgroundColor3 = Color3.fromRGB(16, 21, 31)
+    info.BackgroundColor3 = Color3.fromRGB(28, 30, 40)
     info.BorderSizePixel = 0
     info.Parent = content
     corner(info, 10)
-    stroke(info, Color3.fromRGB(42, 55, 75), 1, 0.25)
+    stroke(info, Color3.fromRGB(60, 65, 82), 1, 0.25)
 
-    local infoTitle = label(info, "KEY VERIFICATION", 11, Color3.fromRGB(105, 190, 255), Enum.Font.GothamBold)
+    local infoTitle = label(info, "KEY VERIFICATION", 11, Color3.fromRGB(180, 110, 255), Enum.Font.GothamBold)
     infoTitle.Position = UDim2.new(0, 14, 0, 7)
     infoTitle.Size = UDim2.new(1, -28, 0, 15)
-    local infoText = label(info, "Enter your access key to continue.", 11, Color3.fromRGB(140, 150, 170), Enum.Font.Gotham)
+    local infoText = label(info, "Enter your access key to continue.", 11, Color3.fromRGB(140, 145, 165), Enum.Font.Gotham)
     infoText.Position = UDim2.new(0, 14, 0, 25)
     infoText.Size = UDim2.new(1, -28, 0, 15)
 
@@ -385,41 +385,41 @@ local function CreateGUI()
         socialY = socialY + 40
     end
 
-    if Config.ShowDiscord then addSocial("JOIN DISCORD", Config.DiscordURL, Color3.fromRGB(50, 60, 115), "rbxassetid://18505728201") end
+    if Config.ShowDiscord then addSocial("JOIN DISCORD", Config.DiscordURL, Color3.fromRGB(48, 32, 78), "rbxassetid://18505728201") end
     if Config.ShowInstagram then addSocial("FOLLOW INSTAGRAM", Config.InstagramURL, Color3.fromRGB(95, 40, 70), "rbxassetid://18355586382") end
     if Config.ShowYoutube then addSocial("SUBSCRIBE YOUTUBE", Config.YoutubeURL, Color3.fromRGB(105, 35, 35), "rbxassetid://82532989017804") end
 
     local inputY = socialY + 2
-    local keyLabel = label(content, "ACCESS KEY", 10, Color3.fromRGB(125, 140, 165), Enum.Font.GothamBold)
+    local keyLabel = label(content, "ACCESS KEY", 10, Color3.fromRGB(140, 145, 165), Enum.Font.GothamBold)
     keyLabel.Position = UDim2.new(0, 2, 0, inputY)
     keyLabel.Size = UDim2.new(1, -4, 0, 16)
 
     local keyBox = Instance.new("TextBox")
     keyBox.Size = UDim2.new(1, 0, 0, 42)
     keyBox.Position = UDim2.new(0, 0, 0, inputY + 21)
-    keyBox.BackgroundColor3 = Color3.fromRGB(15, 20, 29)
+    keyBox.BackgroundColor3 = Color3.fromRGB(14, 15, 20)
     keyBox.BorderSizePixel = 0
     keyBox.ClearTextOnFocus = false
     keyBox.PlaceholderText = "Paste your key here..."
-    keyBox.PlaceholderColor3 = Color3.fromRGB(80, 92, 112)
+    keyBox.PlaceholderColor3 = Color3.fromRGB(90, 95, 115)
     keyBox.Text = ""
-    keyBox.TextColor3 = Color3.fromRGB(235, 240, 250)
+    keyBox.TextColor3 = Color3.fromRGB(235, 238, 245)
     keyBox.Font = Enum.Font.GothamMedium
     keyBox.TextSize = 13
     keyBox.TextXAlignment = Enum.TextXAlignment.Left
     keyBox.Parent = content
     corner(keyBox, 10)
-    stroke(keyBox, Color3.fromRGB(45, 60, 82), 1, 0.1)
+    stroke(keyBox, Color3.fromRGB(42, 45, 58), 1, 0.1)
     local pad = Instance.new("UIPadding")
     pad.PaddingLeft = UDim.new(0, 13)
     pad.PaddingRight = UDim.new(0, 13)
     pad.Parent = keyBox
 
-    local verify = button(content, "VERIFY KEY", Color3.fromRGB(0, 120, 215))
+    local verify = button(content, "VERIFY KEY", Color3.fromRGB(138, 43, 226))
     verify.Size = UDim2.new(0.58, -5, 0, 42)
     verify.Position = UDim2.new(0, 0, 0, inputY + 73)
 
-    local getKey = button(content, "GET KEY", Color3.fromRGB(25, 31, 42))
+    local getKey = button(content, "GET KEY", Color3.fromRGB(36, 38, 50))
     getKey.Size = UDim2.new(0.42, -5, 0, 42)
     getKey.Position = UDim2.new(0.58, 10, 0, inputY + 73)
 
@@ -429,14 +429,14 @@ local function CreateGUI()
     Status.Position = UDim2.new(0, 0, 0, inputY + 122)
     Status.BackgroundTransparency = 1
     Status.Text = "Ready for verification."
-    Status.TextColor3 = Color3.fromRGB(125, 140, 165)
+    Status.TextColor3 = Color3.fromRGB(140, 145, 165)
     Status.Font = Enum.Font.GothamMedium
     Status.TextSize = 11
     Status.TextXAlignment = Enum.TextXAlignment.Center
     Status.TextWrapped = true
     Status.Parent = content
 
-    local footer = label(MainFrame, "SECURE ACCESS  •  SESSION VERIFIED BY PLATOBOOST", 9, Color3.fromRGB(75, 90, 110), Enum.Font.GothamMedium)
+    local footer = label(MainFrame, "SECURE ACCESS  •  SESSION VERIFIED BY PLATOBOOST", 9, Color3.fromRGB(90, 95, 115), Enum.Font.GothamMedium)
     footer.Size = UDim2.new(1, -44, 0, 18)
     footer.Position = UDim2.new(0, 22, 1, -27)
     footer.TextXAlignment = Enum.TextXAlignment.Center
@@ -448,7 +448,7 @@ local function CreateGUI()
         getKey.AutoButtonColor = not value
         verify.Text = value and "VERIFYING..." or "VERIFY KEY"
         Status.Text = text
-        Status.TextColor3 = value and Color3.fromRGB(105, 190, 255) or Status.TextColor3
+        Status.TextColor3 = value and Color3.fromRGB(180, 110, 255) or Status.TextColor3
     end
 
     verify.MouseButton1Click:Connect(function()
@@ -485,7 +485,7 @@ local function CreateGUI()
         if success then
             local copied = pcall(function() if fSetClipboard then fSetClipboard(link) else error("Clipboard unavailable") end end)
             Status.Text = copied and "Key link copied to clipboard." or tostring(link)
-            Status.TextColor3 = Color3.fromRGB(90, 190, 255)
+            Status.TextColor3 = Color3.fromRGB(180, 110, 255)
             statusDot.BackgroundColor3 = Color3.fromRGB(40, 220, 125)
         else
             Status.Text = tostring(link or "Unable to generate link.")
@@ -499,7 +499,7 @@ local function CreateGUI()
             local okRead, savedKey = pcall(readfile, Config.KeyFileName)
             if okRead and savedKey and savedKey ~= "" then
                 Status.Text = "Saved key found. Verifying automatically..."
-                Status.TextColor3 = Color3.fromRGB(105, 190, 255)
+                Status.TextColor3 = Color3.fromRGB(180, 110, 255)
                 task.spawn(function()
                     task.wait(0.8)
                     local success, msg = redeemKey(savedKey)
