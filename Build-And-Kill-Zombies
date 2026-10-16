@@ -1,28 +1,3 @@
-
--- ⚠️ IMPORTANT: Put this code at the VERY TOP of your Main Script (before obfuscating) ⚠️
-
-local ProtectionConfig = {
-    -- 🔴 CRITICAL: This MUST exactly match the 'Secret' value in your Key System's Config!
-    -- If your Key System has: Secret = "Test"
-    -- Then this must also be: SecretKey = "Test"
-    SecretKey = "9841",
-    
-    -- The name of your Hub (shown in the kick message if they try to bypass)
-    HubName = "DEV_G"
-}
-
--- Anti-Bypass Logic: Checks if the Key System successfully set the global variable
-if not _G[ProtectionConfig.SecretKey] then
-    local player = game:GetService("Players").LocalPlayer
-    if player then
-        player:Kick("\n🛡️ Unauthorized Execution 🛡️\n\nPlease use the official Key System to run " .. ProtectionConfig.HubName)
-    end
-    return -- Stops the rest of the script from loading!
-end
-
--------------------------------------------------------------------------------
--- 👇 YOUR MAIN SCRIPT CODE STARTS HERE 👇
--------------------------------------------------------------------------------
 --[[
     DEV G SCRIPTS — Diagnostic Build
     HollowRuns: wait for HollowPortals → auto-seat → fire remote → combat → back to waiting
@@ -82,7 +57,7 @@ local S = {
     straightDir = nil,
     rollBuyWait = 6.0,
     uiScaleOverride = 0,
-    autoRejoinOn = false, autoExecOn = false, scriptSource = "", hopping = false,
+    autoRejoinOn = false, autoExecOn = false, scriptSource = "", notificationsOn = true, hopping = false,
     hopperOn = false, hopperMinPlayers = 0, hopperMaxPlayers = 8,
     hopperDelay = 20, hopperUseLowPop = true,
     minimizeKeybind = Enum.KeyCode.RightControl, listeningForKey = false,
@@ -185,7 +160,7 @@ local function saveConfig()
                 blacklistOnly = S.blacklistOnly,
                 selectedBlacklistItems = blackList,
                 minimizeKeybind = S.minimizeKeybind and S.minimizeKeybind.Name or "RightControl",
-                autoRejoinOn = S.autoRejoinOn, autoExecOn = S.autoExecOn, scriptSource = S.scriptSource,
+                autoRejoinOn = S.autoRejoinOn, autoExecOn = S.autoExecOn, scriptSource = S.scriptSource, notificationsOn = S.notificationsOn,
                 hollowAutoOn = S.hollowAutoOn, hollowOrbitRadius = S.hollowOrbitRadius,
                 hollowOrbitSpeed = S.hollowOrbitSpeed, hollowDriveSpeed = S.hollowDriveSpeed,
                 hollowHoldRadius = S.hollowHoldRadius, hollowOrbitEnabled = S.hollowOrbitEnabled,
@@ -196,6 +171,18 @@ local function saveConfig()
             }
             writefile(CONFIG_FILE, HttpService:JSONEncode(data))
         end
+    end)
+end
+
+local configSaveToken = 0
+
+local function requestConfigSave(delaySeconds)
+    delaySeconds = delaySeconds or 0.75
+    configSaveToken = configSaveToken + 1
+    local token = configSaveToken
+    task.delay(delaySeconds, function()
+        if token ~= configSaveToken then return end
+        saveConfig()
     end)
 end
 
@@ -236,6 +223,7 @@ local function loadConfig()
                     if type(data.autoRejoinOn) == "boolean" then S.autoRejoinOn = data.autoRejoinOn end
                     if type(data.autoExecOn) == "boolean" then S.autoExecOn = data.autoExecOn end
                     if type(data.scriptSource) == "string" then S.scriptSource = data.scriptSource end
+                    if type(data.notificationsOn) == "boolean" then S.notificationsOn = data.notificationsOn end
                     if type(data.hollowAutoOn) == "boolean" then S.hollowAutoOn = data.hollowAutoOn end
                     if type(data.hollowOrbitRadius) == "number" then S.hollowOrbitRadius = math.clamp(data.hollowOrbitRadius, 5, 500) end
                     if type(data.hollowOrbitSpeed) == "number" then S.hollowOrbitSpeed = math.clamp(data.hollowOrbitSpeed, 20, 800) end
@@ -658,7 +646,7 @@ local function hollowCancelDrivePulse()
     if S.hollowDrivePulseActive then
         S.hollowDrivePulseToken = S.hollowDrivePulseToken + 1
         S.hollowDrivePulseActive = false
-        setAutoDriveState(S.hollowUserDrivePreference or false)
+        setAutoDriveState(S.hollowUserDrivePref or false)
     end
 end
 
@@ -801,6 +789,7 @@ pcall(function()
 end)
 
 local function notify(text, isWarning)
+    if not S.notificationsOn then return end
     task.spawn(function()
         if not gui or not gui.Parent then return end
         local card = Instance.new("Frame")
@@ -949,9 +938,13 @@ local glowStrokes = {}
 for _, s in ipairs(main:GetChildren()) do
     if s:IsA("UIStroke") then table.insert(glowStrokes, s) end
 end
+local lastGlowUpdate = 0
 table.insert(connections, RunService.Heartbeat:Connect(function()
+    local now = tick()
+    if now - lastGlowUpdate < (1 / 30) then return end
+    lastGlowUpdate = now
     pcall(function()
-        local t = tick() * 2
+        local t = now * 2
         local pulse = (math.sin(t) + 1) * 0.5
         for i, s in ipairs(glowStrokes) do
             if i > 1 then
@@ -1269,7 +1262,7 @@ local function addToggleRow(parent, labelText, defaultState, callback)
         state = not state
         updateVisual()
         if callback then callback(state) end
-        saveConfig()
+        requestConfigSave()
         return state
     end
 
@@ -1336,7 +1329,7 @@ local function addNumberRow(parent, labelText, initialVal, minV, maxV, callback)
             v = math.clamp(v, minV, maxV)
             box.Text = tostring(v)
             callback(v)
-            saveConfig()
+            requestConfigSave()
             applyBtn.BackgroundColor3 = Color3.fromRGB(90, 60, 140)
             task.delay(0.3, function()
                 pcall(function() applyBtn.BackgroundColor3 = Color3.fromRGB(55, 40, 85) end)
@@ -1564,7 +1557,7 @@ local function updateSpeedUI(sel)
         sb.BackgroundColor3 = (sp == sel) and C.accent or C.sidebar
         sb.TextColor3 = (sp == sel) and Color3.new(1,1,1) or C.textDim
     end
-    saveConfig()
+    requestConfigSave()
 end
 
 for sp, sb in pairs(speedBtns) do
@@ -1637,7 +1630,7 @@ rarityBtn.MouseButton1Click:Connect(function()
     S.minRarityIdx = (S.minRarityIdx % #rarityNames) + 1
     rarityBtn.Text = "MINIMUM RARITY:  " .. rarityNames[S.minRarityIdx] .. "+"
     notify("Min rarity filter set to: " .. rarityNames[S.minRarityIdx] .. "+", false)
-    saveConfig()
+    requestConfigSave()
 end)
 
 -- ===================== BLACKLIST (MANUAL KEYWORDS) =====================
@@ -1645,13 +1638,13 @@ addSectionHeader(rollBuyPage, "Item Blacklist")
 
 addToggleRow(rollBuyPage, "Enforce Blacklist System", S.useBlacklist, function(s)
     S.useBlacklist = s
-    saveConfig()
+    requestConfigSave()
     notify("Blacklist system: " .. (s and "ACTIVE" or "OFF"), false)
 end)
 
 addToggleRow(rollBuyPage, "Blacklist-Only Mode (ignore rarity)", S.blacklistOnly, function(s)
     S.blacklistOnly = s
-    saveConfig()
+    requestConfigSave()
     if s then
         notify("Blacklist-Only: buying everything not blacklisted", false)
     else
@@ -1731,7 +1724,7 @@ end)
 blacklistApplyBtn.MouseButton1Click:Connect(function()
     S.blacklistText = blacklistInput.Text or ""
     refreshManualBlacklist()
-    saveConfig()
+    requestConfigSave()
     notify("Blacklist saved: " .. blacklistStatus.Text:gsub("Blacklist: ", ""), false)
 end)
 
@@ -1905,7 +1898,7 @@ setSpotBtn.MouseButton1Click:Connect(function()
         lx = cf.LookVector.X, ly = cf.LookVector.Y, lz = cf.LookVector.Z,
     }
     S.hackerFarmArrived = false
-    saveConfig()
+    requestConfigSave()
     refreshHackerSpotLabel()
     notify(string.format("Hacker's Farm spot saved: %.1f, %.1f, %.1f",
         cf.Position.X, cf.Position.Y, cf.Position.Z), false)
@@ -1919,7 +1912,7 @@ clearSpotBtn.MouseButton1Click:Connect(function()
         return
     end
     S.hackerFarmSavedCF = nil
-    saveConfig()
+    requestConfigSave()
     refreshHackerSpotLabel()
     notify("Hacker's Farm spot cleared — will use Batch_57 fallback", false)
 end)
@@ -2009,6 +2002,35 @@ local function pickServer()
     return candidates[math.random(1, pickMax)]
 end
 
+local DEV_G_AUTO_EXEC_URL = "https://raw.githubusercontent.com/DEV-Gscript/Scripts/refs/heads/main/Main-script"
+
+local function queueDevGAutoExecute()
+    if not S.autoExecOn then return false end
+    local payload = 'loadstring(game:HttpGet("' .. DEV_G_AUTO_EXEC_URL .. '"))()'
+    local q = queue_on_teleport or queueonteleport
+    if not q then
+        pcall(function()
+            if syn and syn.queue_on_teleport then q = syn.queue_on_teleport end
+        end)
+    end
+    if not q then
+        pcall(function()
+            if fluxus and fluxus.queue_on_teleport then q = fluxus.queue_on_teleport end
+        end)
+    end
+    if type(q) ~= "function" then
+        addLog("Auto Execute enabled, but this executor does not expose queue_on_teleport", "AUTOEXEC")
+        return false
+    end
+    local ok, err = pcall(function() q(payload) end)
+    if ok then
+        addLog("Auto Execute queued for next server", "AUTOEXEC")
+        return true
+    end
+    addLog("Auto Execute queue failed: " .. tostring(err), "AUTOEXEC")
+    return false
+end
+
 local function hopServer()
     if S.hopping then
         notify("Hop already in progress...", true)
@@ -2029,6 +2051,7 @@ local function hopServer()
     notify("Hopping to server (" .. chosen.playing .. " players)", false)
 
     task.wait(0.6)
+    if S.autoExecOn then queueDevGAutoExecute() end
     local ok, err = pcall(function()
         TeleportService:TeleportToPlaceInstance(game.PlaceId, chosen.id, lp)
     end)
@@ -2078,6 +2101,7 @@ task.spawn(function()
                         addLog("Disconnect detected — auto-rejoin in 3s", "REJOIN")
                         notify("Disconnected — rejoining...", true)
                         task.wait(3)
+                        if S.autoExecOn then queueDevGAutoExecute() end
                         pcall(function() TeleportService:Teleport(game.PlaceId, lp) end)
                     end
                 end))
@@ -2098,6 +2122,41 @@ end)
 
 -- ===================== SETTINGS =====================
 addSectionHeader(settingsPage, "GUI Visibility & Keybinds")
+addSectionHeader(settingsPage, "Notifications & Automation")
+
+addToggleRow(settingsPage, "Enable Notifications", S.notificationsOn, function(s)
+    S.notificationsOn = s
+    requestConfigSave()
+    if s then
+        notify("Notifications: ON", false)
+    end
+end)
+
+addToggleRow(settingsPage, "Auto Execute Script", S.autoExecOn, function(s)
+    S.autoExecOn = s
+    S.scriptSource = DEV_G_AUTO_EXEC_URL
+    requestConfigSave()
+    if s then
+        local queued = queueDevGAutoExecute()
+        if S.notificationsOn then
+            notify(queued and "Auto Execute: ON — queued for next teleport" or "Auto Execute: ON — executor queue unavailable", not queued)
+        end
+    else
+        notify("Auto Execute: OFF", false)
+    end
+end)
+
+local autoExecInfo = Instance.new("TextLabel")
+autoExecInfo.Size = UDim2.new(1, 0, 0, 34)
+autoExecInfo.BackgroundTransparency = 1
+autoExecInfo.TextColor3 = C.textDim
+autoExecInfo.Font = Enum.Font.Code
+autoExecInfo.TextSize = 10
+autoExecInfo.TextWrapped = true
+autoExecInfo.TextXAlignment = Enum.TextXAlignment.Left
+autoExecInfo.Text = "Auto Execute uses the DEV_G Main-script URL after server teleport/rejoin."
+autoExecInfo.Parent = settingsPage
+
 
 if not IS_MOBILE then
     local keybindBtn = Instance.new("TextButton")
@@ -2409,7 +2468,7 @@ if not IS_MOBILE then
                     _G_DEVG_KEYBIND_BTN.TextColor3 = C.accentLt
                 end
                 notify("Minimize keybind: " .. S.minimizeKeybind.Name, false)
-                saveConfig()
+                requestConfigSave()
                 return
             end
         end
@@ -2421,7 +2480,11 @@ if not IS_MOBILE then
 end
 
 -- ===================== STATS UPDATE =====================
+local lastStatsUpdate = 0
 table.insert(connections, RunService.Heartbeat:Connect(function()
+    local now = tick()
+    if now - lastStatsUpdate < 0.25 then return end
+    lastStatsUpdate = now
     pcall(function()
         if lp then
             local cv = lp:FindFirstChild("CashValue")
@@ -2801,17 +2864,22 @@ table.insert(connections, RunService.Heartbeat:Connect(function(dt)
         end
 
         if S.hollowPhase == "waiting" then
-            if hasCar then
-                car.PrimaryPart.AssemblyLinearVelocity = Vector3.new(0, car.PrimaryPart.AssemblyLinearVelocity.Y, 0)
-                car.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
-            end
+            -- IMPORTANT: HollowRuns is only monitoring while waiting.
+            -- Do not stop the car here, otherwise Auto Drive / Money Farm
+            -- cannot continue while the event toggle is enabled.
             local portal = hollowGetPortal()
             if portal then
+                -- The event is now active, so temporarily give HollowRuns
+                -- control of the vehicle. Release any farm anchor first.
+                pcall(unanchorProFarmCar)
+                pcall(unanchorHackerFarmCar)
+                S.proFarmArrived = false
+                S.hackerFarmArrived = false
                 S.hollowPhase = "travel"
                 S.hollowRemoteFired = 0
                 pcall(hollowArmTriggerTouch)
                 hollowPulseAutoDrive()
-                notify("HollowRuns: portal spawned — entering travel", false)
+                notify("HollowRuns: portal spawned — taking vehicle control", false)
             end
             return
         end
